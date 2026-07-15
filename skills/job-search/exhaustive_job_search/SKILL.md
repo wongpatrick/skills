@@ -1,6 +1,6 @@
 ---
 name: exhaustive-job-search
-description: Orchestrates an exhaustive job search using multiple sub-agents for Remote and Seattle-based roles across Engineering Management, various Software Engineering levels, and Solutions Architecture, cross-referencing jobs against the user's resume for a fit score.
+description: Orchestrates a coordinated, exhaustive job search using multiple sub-agents to find relevant jobs, matching them against the user's resume, and extracting direct ATS links for auto-fill automation.
 ---
 
 # Exhaustive Job Search Skill
@@ -9,21 +9,26 @@ When you invoke this skill, your task is to launch a coordinated, exhaustive job
 
 ## Instructions
 
-1. **Read the User's Resume First:**
-   - Before launching the sub-agents, use your tools (like `view_file` or a PDF parsing tool if necessary) to read the user's latest resume located at: `C:\Users\wongp\OneDrive\Documents\Resume\2026\Universal\Patrick_Wong_Resume_Software_Engineer_Manager.pdf`.
-   - You MUST fetch it fresh every time this skill is run.
+1. **Load/Get Search Configuration:**
+   - Look for the saved configuration file at: `C:\Users\wongp\.gemini\antigravity\job_search_config.json`.
+   - If the file exists, parse it to retrieve the default `resume_path`, `target_roles`, and `target_locations`.
+   - Check the user's initial prompt or context. If the user provided custom inputs (resume path, target roles, or locations), use those to override the default values loaded from the configuration file.
+   - If any values are missing from both the user prompt and the configuration file, explicitly ask the user to provide them before starting.
+   - If the user provides new inputs, ask them if they want to save these settings as defaults. If they agree (or if they explicitly requested to save/remember them), write the new parameters to `C:\Users\wongp\.gemini\antigravity\job_search_config.json` in the following format:
+     ```json
+     {
+       "resume_path": "C:\\path\\to\\resume.pdf",
+       "target_roles": ["Engineering Manager", "Senior Software Engineer"],
+       "target_locations": ["Remote", "Seattle"]
+     }
+     ```
+   - Once the final resume path is resolved, read the resume contents using your tools (e.g., `view_file` or another file reading tool) to get the fresh content.
 
 2. **Launch Sub-Agents:**
-   - Use the `invoke_subagent` tool to launch six `research` sub-agents simultaneously. 
-   - Pass the text of the user's resume to each sub-agent in their prompt.
-   - Instruct the sub-agents to prioritize searching on **LinkedIn, BuiltInSeattle, Levels.fyi jobs, and direct careers pages of Big Tech companies**.
-   - Assign each sub-agent one of the following specific search tracks:
-     - **Agent 1 (EM Searcher):** Search for Remote or Seattle-based "Engineering Manager" job listings.
-     - **Agent 2 (Senior SE Searcher):** Search for Remote or Seattle-based "Senior Software Engineer" job listings.
-     - **Agent 3 (Intermediate Big Tech Searcher):** Search for Remote or Seattle-based "Intermediate Software Engineer" job listings specifically at Big Tech companies (e.g., FAANG, Microsoft, Amazon).
-     - **Agent 4 (Staff & Tech Lead Searcher):** Search for Remote or Seattle-based "Staff Software Engineer" and "Tech Lead" job listings.
-     - **Agent 5 (Solutions & FDE Searcher):** Search for Remote or Seattle-based "Solutions Architect" and "Forward Deployed Engineer" job listings.
-     - **Agent 6 (Senior Full Stack Searcher):** Search for Remote or Seattle-based "Senior Full Stack Engineer" job listings (prioritizing Golang, React, Angular stacks).
+   - Determine the search tracks by partitioning the target roles/locations specified by the user. Assign one track to each sub-agent.
+   - Use the `invoke_subagent` tool to launch the `research` sub-agents simultaneously (one for each track).
+   - Pass the text of the user's resume and the specific search track (roles, locations, focus sites/companies) to each sub-agent in their prompt.
+   - Instruct the sub-agents to prioritize searching on relevant job boards (e.g., LinkedIn, Indeed, local/regional job sites, or company careers pages).
 
 3. **Sub-Agent Execution Rules:**
    - Exhaust all options! If they find 20 or 100 listings, they must process them all.
@@ -67,9 +72,9 @@ When you invoke this skill, your task is to launch a coordinated, exhaustive job
    - If you cannot determine the direct ATS URL, load the page with your tools, find the iframe `src`, and use that.
 
 5. **Aggregation:**
-   - After launching the sub-agents, wait for all six to report back. Do not prematurely conclude the task. If a sub-agent takes too long, use `send_message` to check on its progress.
+   - After launching the sub-agents, wait for all of them to report back. Do not prematurely conclude the task. If a sub-agent takes too long, use `send_message` to check on its progress.
    - Once all sub-agents have reported their findings, consolidate the results into a single artifact named `job_search_results.md`.
-   - Organize the artifact with sections for each of the 6 roles.
+   - Organize the artifact with sections for each of the searched roles/tracks.
    - Use a detailed Markdown table for each section with the exact following columns: `Company | Title | Location | Match Score 1-10 | Brief Reason | Application Link`.
    - **CRITICAL**: The `Application Link` column MUST contain a **direct ATS URL** (Greenhouse, Lever, Ashby, Workday, SmartRecruiters, etc.) or a direct job board URL (LinkedIn `/jobs/view/JOBID`, Indeed, etc.) — NOT a company careers page wrapper. See Section 4 above for the conversion rules. This enables auto-fill via the user's Simplify extension.
    - **During aggregation, the orchestrator MUST validate every link** returned by sub-agents. If any link is a company wrapper URL (contains `gh_jid=` param, or points to a generic `/careers` page), convert it to the direct ATS URL before including it in the final report.
